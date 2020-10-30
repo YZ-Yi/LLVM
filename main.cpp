@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <map>
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -92,6 +93,7 @@ static int getTok(){
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 //-------------------- THE ABSTRACT SYNTAX TREE (AST) ---------------------------
+namespace{
 //ExprAST - Base class for all expression nodes
 class ExprAST{
 public:
@@ -161,6 +163,8 @@ private:
     std::unique_ptr<PrototypeAST> proto;
     std::unique_ptr<ExprAST> body;
 };
+}
+
 //----------------- END OF THE ABSTRACT SYNTAX TREE (AST) ----------------------
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -173,6 +177,8 @@ private:
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 //---------------------------------- PARSER ------------------------------------
+
+//---------------------------------PARSER BASICS--------------------------------
 //curTok/getNextToken - Provide a simple token buffer.
 //curTok is the current token the parser is looking at.
 //getNextToken reads another token from the lexer and updates curTok with its results.
@@ -193,6 +199,123 @@ std::unique_ptr<PrototypeAST> logErrorP(const char *str){
     return nullptr;
 }
 
+//-------------------------- BASIC EXPRESSION ----------------------------
+
+//numberexpr ::= number
+static std::unique_ptr<ExprAST> parseNumberExpr(){
+    auto result = std::make_unique<NumberExprATS>(numVal);
+    getNextToken();                                            //comsume the number
+    return std::move(result);
+}
+
+//parenexpr ::= '(' expresion ')'
+static std::unique_ptr<ExprAST> parseParenExpr(){
+    getNextToken();
+
+    auto v = parseExpression();
+    if(!v)
+        return nullptr;
+    
+    if(curTok != ')')
+        return logError("expected ')'");
+    getNextToken();
+
+    return v;
+}
+
+//identifierexpr
+//  ::= identifier
+//  ::= identifier '(' expression* ')'
+static std::unique_ptr<ExprAST> ParseIdentifierExpr(){
+    std::string idName = identiferStr;
+
+    getNextToken();
+
+    if(curTok != '(')                                       //simple variable ref.
+        return std::make_unique<VariableExprAST> idName;
+    
+    //call
+    getNextToken();
+    std::vector<std::unique_ptr<ExprAST>> args;
+    if(curTok != ')'){
+        while(1){
+            if(auto arg = paraseExpression)
+                args.push_back(arg);
+            else
+                return nullptr;
+            
+            if(curTok == ')')
+                break;
+            
+            if(curTok != ',')
+                return logError("expected ')' or ',' in argument list");
+            
+            getNextToken;
+        }
+    }
+
+    getNextToken();
+
+    return std::make_unique<CallExprATS>(idName, std::move(args));
+}
+
+//primary
+//  ::= identifierexpr
+//  ::= numberexpr
+//  ::= parenexpr
+static std::unique_ptr<ExprAST> parsePrimary(){
+    switch(curTok){
+    default:
+        return logError("unknow token when expecting an expression");
+    case tok_identifier:
+        return ParseIdentifierExpr();
+    case tok_number:
+        return parseNumberExpr();
+    case '(':
+        return parseParenExpr();
+    }
+}
+
+//------------------------ BINARY EXPRESSION ---------------------------
+
+//binoPrecedence - This holds the precedence for each binary operator that os defined
+static std::map<char, int> binoPrecedence;
+
+//getTokPrecedence - Get the precedence of the pending binary operator token
+static int getTokPrecedence(){
+    if(!isascii(curTok))
+        return -1;
+
+    //make sure it is a declared binop
+    int tokPrec = binoPrecedence[curTok];
+    if (tokPrec <= 0)
+    {
+        return -1;
+    }
+    
+    return tokPrec;
+}
+
+//a sequence of [binop, primaryexpr] pairs
+//expression
+//  ::= primary binoprhs
+static std::unique_ptr<ExprAST> parseExpression(){
+    auto LHS = parsePrimary();
+    if(!LHS)
+        return nullptr;
+    
+    return parseBinOpRHS(0, std::move(LHS));
+}
+
 int main(void){
+    //Install standard binary operator
+    //1 is the lowest precedence
+    //only support 4 binary operators right now
+    binoPrecedence['<'] = 10;
+    binoPrecedence['+'] = 20;
+    binoPrecedence['-'] = 30;
+    binoPrecedence['*'] = 40;           //highest
+
+
     return 0;
 }
